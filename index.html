@@ -513,13 +513,17 @@ const FLOOR_FROM = {
 };
 const FLOOR_PRICE = {plank:320, tile:180};
 const FLOOR_SIZE = {plank:[1200,150], tile:[800,800]};
+const FLOOR_DEFAULT_COLOR = {plank:'#d8b88a', tile:'#ebe6dc'};
 function floorFromMat(mat){ return {...(FLOOR_FROM[mat] || FLOOR_FROM.tile800)}; }
 function clampSize(n, fallback){ n = Math.round(+n); return n >= 50 && n <= 3000 ? n : fallback; }
 function safeHex(c, fallback){ return /^#[0-9a-fA-F]{6}$/.test(c || '') ? c.toLowerCase() : fallback; }
 function floorOf(st){
   const base = floorFromMat(st && st.mat);
   const kind = st && (st.kind === 'plank' || st.kind === 'tile') ? st.kind : base.kind;
-  return {kind, color:safeHex(st && st.color, base.color), w:clampSize(st && st.w, base.w), h:clampSize(st && st.h, base.h), lay: st && st.lay === 'v' ? 'v' : 'h'};
+  const legacy = safeHex(st && st.color, base.color);
+  const plankColor = safeHex(st && st.plankColor, kind === 'plank' ? legacy : (base.kind === 'plank' ? base.color : FLOOR_DEFAULT_COLOR.plank));
+  const tileColor = safeHex(st && st.tileColor, kind === 'tile' ? legacy : (base.kind === 'tile' ? base.color : FLOOR_DEFAULT_COLOR.tile));
+  return {kind, color: kind === 'tile' ? tileColor : plankColor, plankColor, tileColor, w:clampSize(st && st.w, base.w), h:clampSize(st && st.h, base.h), lay: st && st.lay === 'v' ? 'v' : 'h'};
 }
 function floorName(f){ return f.kind === 'plank' ? tr('地板','Wood floor') : tr('地砖','Floor tile'); }
 function floorLayName(f){ return f.lay === 'v' ? tr('竖贴','Vertical') : tr('横贴','Horizontal'); }
@@ -562,7 +566,10 @@ const F = (type,name,cx,cy,w,d,rot=0,color) => ({id:uid(),type,name,cx,cy,w,d,ro
 
 function defaultFurniture(){ return []; }
 function defaultState(){
-  const rooms = {}; ROOMS.forEach(r => { const f = floorFromMat(r.mat); rooms[r.id] = {name:r.name, kind:f.kind, color:f.color, w:f.w, h:f.h, lay:'h'}; });
+  const rooms = {}; ROOMS.forEach(r => {
+    const f = floorFromMat(r.mat);
+    rooms[r.id] = {name:r.name, kind:f.kind, plankColor: f.kind === 'plank' ? f.color : FLOOR_DEFAULT_COLOR.plank, tileColor: f.kind === 'tile' ? f.color : FLOOR_DEFAULT_COLOR.tile, w:f.w, h:f.h, lay:'h'};
+  });
   return {furniture:defaultFurniture(), rooms, demolished:[], measures:[]};
 }
 
@@ -577,10 +584,10 @@ function fixState(s){
   ROOMS.forEach(r => {
     const cur = s.rooms[r.id] || {};
     const base = floorFromMat(cur.mat || r.mat);
-    const kind = cur.kind === 'plank' || cur.kind === 'tile' ? cur.kind : base.kind;
+    const f = floorOf({...base, ...cur, mat: cur.mat || r.mat});
     s.rooms[r.id] = {
-      name: cur.name || r.name, kind,
-      color: safeHex(cur.color, base.color),
+      name: cur.name || r.name, kind: f.kind,
+      plankColor: f.plankColor, tileColor: f.tileColor,
       w: clampSize(cur.kind ? cur.w : base.w, base.w),
       h: clampSize(cur.kind ? cur.h : base.h, base.h),
       lay: cur.lay === 'v' ? 'v' : 'h',
@@ -1056,7 +1063,7 @@ function closeDrawers(){ if (narrow()) drawer(null); }
 function roomPanel(r){
   const st = state.rooms[r.id], fl = floorOf(st), a = area(r.poly), [x0,y0,x1,y1] = bbox(r.poly), inside = state.furniture.filter(f => f.cx>x0&&f.cx<x1&&f.cy>y0&&f.cy<y1);
   const kinds = [['plank', tr('地板','Wood floor')], ['tile', tr('地砖','Floor tile')]].map(([k,label]) =>
-    `<button type="button" class="mat ${fl.kind===k?'on':''}" data-kind="${k}"><i style="background:${fl.color}"></i><span>${label}<small>¥${FLOOR_PRICE[k]}/m²</small></span></button>`).join('');
+    `<button type="button" class="mat ${fl.kind===k?'on':''}" data-kind="${k}"><i style="background:${k==='tile'?fl.tileColor:fl.plankColor}"></i><span>${label}<small>¥${FLOOR_PRICE[k]}/m²</small></span></button>`).join('');
   const lays = [['h', tr('横贴','Horizontal')], ['v', tr('竖贴','Vertical')]].map(([k,label]) =>
     `<button type="button" class="mat ${fl.lay===k?'on':''}" data-lay="${k}"><span>${label}</span></button>`).join('');
   return `<section><h3>${tr('房间','Room')}</h3>
@@ -1093,9 +1100,12 @@ function bindRoomPanel(){
   let colorBefore = null;
   const previewColor = color => {
     if (!colorBefore) colorBefore = snap();
-    state.rooms[id].color = color;
+    const st = state.rooms[id], key = st.kind === 'tile' ? 'tileColor' : 'plankColor';
+    st[key] = color;
     $('#flP').value = color;
     $('#flC').value = color.slice(1);
+    const chip = document.querySelector(`#panel [data-kind="${st.kind}"] i`);
+    if (chip) chip.style.background = color;
     buildDefs(); renderRooms();
     window.View3D?.sync();
   };
@@ -1109,11 +1119,14 @@ function bindRoomPanel(){
   $('#flC').onchange = e => {
     const color = parseHex(e.target.value);
     if (!color){
-      const prev = colorBefore ? JSON.parse(colorBefore).rooms[id].color : state.rooms[id].color;
+      const saved = colorBefore ? JSON.parse(colorBefore).rooms[id] : null;
       colorBefore = null;
-      state.rooms[id].color = prev;
+      if (saved){ state.rooms[id].plankColor = saved.plankColor; state.rooms[id].tileColor = saved.tileColor; }
+      const prev = floorOf(state.rooms[id]).color;
       $('#flP').value = prev;
       e.target.value = prev.slice(1);
+      const chip = document.querySelector(`#panel [data-kind="${state.rooms[id].kind}"] i`);
+      if (chip) chip.style.background = prev;
       buildDefs(); renderRooms();
       window.View3D?.sync();
       toast(tr('请输入 6 位色号，例如 D8B88A', 'Enter a 6-digit hex color, e.g. D8B88A'));
