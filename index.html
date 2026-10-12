@@ -99,6 +99,9 @@ tr.click:hover td{background:#faf5ee}
 .mat i{width:26px;height:26px;border-radius:5px;border:1px solid rgba(0,0,0,.12);flex:none}
 .mat span{font-size:12px;line-height:1.3}
 .mat small{display:block;color:var(--muted)}
+.hexrow{display:flex;align-items:center;gap:8px}
+.hexrow input[type=color]{width:36px;height:32px;padding:2px;border:1px solid var(--line);border-radius:6px;background:#fff;flex:none;cursor:pointer}
+.hexrow input[type=text]{font-family:ui-monospace,Menlo,monospace;letter-spacing:.4px;text-transform:uppercase}
 .kbd{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:12px;color:var(--muted)}
 kbd{font:11px ui-monospace,Menlo,monospace;background:#f2ece2;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--ink)}
 .big{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -424,12 +427,13 @@ const WALLS = [
   [3820,4190,4400,4330,'b'],
   [4400,4190,4620,4330,'n'],
   [5420,230,5520,460,'b'],
-  [5420,460,5520,4330,'n'],
+  [5420,460,5520,3280,'n'],
+  [5420,4100,5520,4330,'n'],
   // 老人房
   [5520,230,5800,460,'b'],
   [5800,230,6040,460,'e'],
   [7320,230,7750,460,'e'],
-  [6340,4100,7750,4330,'n'],
+  [5520,4100,7750,4330,'n'],
   // 厨房 / 阳台
   [7750,-230,7990,4330,'n'],
   [10260,-230,10490,1010,'e'],
@@ -472,7 +476,7 @@ const DOORS = [
   {name:'主卧门', rect:[2660,5360,3630,5440], h:[3630,5440], c:[-1,0], o:[0,1], len:970},
   {name:'次卫门', rect:[4620,3060,5420,3140], h:[5420,3140], c:[-1,0], o:[0,1], len:800},
   {name:'次卫外门', rect:[4620,4190,5420,4330], h:[5420,4190], c:[-1,0], o:[0,-1], len:800},
-  {name:'老人房门', rect:[5520,4100,6340,4330], h:[5520,4100], c:[1,0], o:[0,-1], len:820},
+  {name:'老人房门', rect:[5420,3280,5520,4100], h:[5520,4100], c:[0,-1], o:[1,0], len:820},
   {name:'书房门', rect:[12680,5540,13520,5780], h:[13520,5780], c:[-1,0], o:[0,1], len:840},
   {name:'入户门', rect:[11250,4090,12450,4330], h:[12450,4090], c:[-1,0], o:[0,-1], len:1200, entry:true},
 ];
@@ -496,16 +500,30 @@ const ROOMS = [
   {id:'living', name:'客厅', poly:[[2660,4330],[14040,4330],[14040,5540],[12430,5540],[12430,5840],[11060,5840],[11060,5540],[10840,5540],[10840,9040],[10900,9040],[10900,10450],[3860,10450],[3860,5360],[2660,5360]], mat:'tile800', at:[7350,7400]},
 ];
 
-const MATS = {
-  wood:    {name:'橡木地板', price:320, sw:'#d8b88a'},
-  walnut:  {name:'胡桃木地板', price:380, sw:'#9b7250'},
-  tile800: {name:'800 地砖', price:220, sw:'#ebe6dc'},
-  tile600: {name:'600 地砖', price:160, sw:'#dfe3e1'},
-  marble:  {name:'大理石', price:650, sw:'#f1eee8'},
-  antislip:{name:'300 防滑砖', price:140, sw:'#d3d8d4'},
-  terrazzo:{name:'水磨石', price:280, sw:'#e6dfd3'},
-  carpet:  {name:'满铺地毯', price:200, sw:'#c9c3d3'},
+// 旧方案里的材质名，用来还原成「地板 / 地砖 + 颜色 + 尺寸」
+const FLOOR_FROM = {
+  wood:    {kind:'plank', color:'#d8b88a', w:1800, h:180},
+  walnut:  {kind:'plank', color:'#9b7250', w:1800, h:180},
+  tile800: {kind:'tile',  color:'#ebe6dc', w:800,  h:800},
+  tile600: {kind:'tile',  color:'#dfe3e1', w:600,  h:600},
+  marble:  {kind:'tile',  color:'#f1eee8', w:800,  h:800},
+  antislip:{kind:'tile',  color:'#d3d8d4', w:300,  h:300},
+  terrazzo:{kind:'tile',  color:'#e6dfd3', w:600,  h:600},
+  carpet:  {kind:'plank', color:'#c9c3d3', w:400,  h:400},
 };
+const FLOOR_PRICE = {plank:320, tile:180};
+const FLOOR_SIZE = {plank:[1200,150], tile:[800,800]};
+function floorFromMat(mat){ return {...(FLOOR_FROM[mat] || FLOOR_FROM.tile800)}; }
+function clampSize(n, fallback){ n = Math.round(+n); return n >= 50 && n <= 3000 ? n : fallback; }
+function safeHex(c, fallback){ return /^#[0-9a-fA-F]{6}$/.test(c || '') ? c.toLowerCase() : fallback; }
+function floorOf(st){
+  const base = floorFromMat(st && st.mat);
+  const kind = st && (st.kind === 'plank' || st.kind === 'tile') ? st.kind : base.kind;
+  return {kind, color:safeHex(st && st.color, base.color), w:clampSize(st && st.w, base.w), h:clampSize(st && st.h, base.h), lay: st && st.lay === 'v' ? 'v' : 'h'};
+}
+function floorName(f){ return f.kind === 'plank' ? tr('地板','Wood floor') : tr('地砖','Floor tile'); }
+function floorLayName(f){ return f.lay === 'v' ? tr('竖贴','Vertical') : tr('横贴','Horizontal'); }
+function floorCost(a, f){ return a * FLOOR_PRICE[f.kind] * 1.05; }
 // 家具库：[类型, 名称, 宽, 深, 颜色]
 const LIB = [
   {cat:'卧室', items:[
@@ -544,7 +562,7 @@ const F = (type,name,cx,cy,w,d,rot=0,color) => ({id:uid(),type,name,cx,cy,w,d,ro
 
 function defaultFurniture(){ return []; }
 function defaultState(){
-  const rooms = {}; ROOMS.forEach(r => rooms[r.id] = {name:r.name, mat:r.mat});
+  const rooms = {}; ROOMS.forEach(r => { const f = floorFromMat(r.mat); rooms[r.id] = {name:r.name, kind:f.kind, color:f.color, w:f.w, h:f.h, lay:'h'}; });
   return {furniture:defaultFurniture(), rooms, demolished:[], measures:[]};
 }
 
@@ -556,6 +574,18 @@ function load(){
 function fixState(s){
   const d = defaultState();
   s.rooms = Object.assign(d.rooms, s.rooms || {});
+  ROOMS.forEach(r => {
+    const cur = s.rooms[r.id] || {};
+    const base = floorFromMat(cur.mat || r.mat);
+    const kind = cur.kind === 'plank' || cur.kind === 'tile' ? cur.kind : base.kind;
+    s.rooms[r.id] = {
+      name: cur.name || r.name, kind,
+      color: safeHex(cur.color, base.color),
+      w: clampSize(cur.kind ? cur.w : base.w, base.w),
+      h: clampSize(cur.kind ? cur.h : base.h, base.h),
+      lay: cur.lay === 'v' ? 'v' : 'h',
+    };
+  });
   s.demolished = s.demolished || []; s.measures = s.measures || [];
   return s;
 }
@@ -599,25 +629,41 @@ function hex2rgb(h){ h = h.replace('#',''); if (h.length===3) h = h.split('').ma
 function shade(h,k){ const f = v => Math.max(0,Math.min(255,Math.round(k>1 ? v+(255-v)*(k-1)*2 : v*k))); return '#'+hex2rgb(h).map(v=>f(v).toString(16).padStart(2,'0')).join(''); }
 
 function buildDefs(){
-  const plank = (id,base,line) => `<pattern id="m-${id}" patternUnits="userSpaceOnUse" width="1800" height="360">
-      <rect width="1800" height="360" fill="${base}"/>
-      <path d="M0 0H1800M0 180H1800M1200 0V180M600 180V360" stroke="${line}" stroke-width="10"/>
-      <path d="M100 70Q500 60 900 85T1700 75M200 260Q700 250 1100 275T1750 262" stroke="${line}" stroke-width="5" fill="none" opacity=".45"/></pattern>`;
-  const tile = (id,size,base,line) => `<pattern id="m-${id}" patternUnits="userSpaceOnUse" width="${size}" height="${size}">
-      <rect width="${size}" height="${size}" fill="${base}"/><path d="M0 0H${size}M0 0V${size}" stroke="${line}" stroke-width="10"/></pattern>`;
-  $('#defs').innerHTML =
-    plank('wood','#dcc09a','#bf9d70') + plank('walnut','#a57c56','#80593a') +
-    tile('tile800',800,'#ece7de','#d3cabb') + tile('tile600',600,'#e2e6e3','#c4cbc6') + tile('antislip',300,'#d6dbd7','#b3bab4') +
-    `<pattern id="m-marble" patternUnits="userSpaceOnUse" width="1200" height="1200">
-      <rect width="1200" height="1200" fill="#f3f0ea"/><path d="M0 0H1200M0 0V1200" stroke="#dcd5c8" stroke-width="10"/>
-      <path d="M-50 300C250 260 380 520 700 470S1100 640 1260 600M200 1200C300 950 520 980 640 820" stroke="#d6cfc2" stroke-width="12" fill="none"/></pattern>
-    <pattern id="m-terrazzo" patternUnits="userSpaceOnUse" width="500" height="500">
-      <rect width="500" height="500" fill="#e8e1d5"/>
-      <circle cx="60" cy="80" r="22" fill="#b9a58c"/><circle cx="310" cy="140" r="16" fill="#8fa3a0"/><circle cx="190" cy="330" r="26" fill="#c9b7a2"/>
-      <circle cx="420" cy="400" r="18" fill="#a88f76"/><circle cx="90" cy="440" r="12" fill="#8fa3a0"/><circle cx="440" cy="40" r="10" fill="#b9a58c"/></pattern>
-    <pattern id="m-carpet" patternUnits="userSpaceOnUse" width="120" height="120">
-      <rect width="120" height="120" fill="#c9c3d3"/><circle cx="30" cy="30" r="8" fill="#bab3c6"/><circle cx="90" cy="90" r="8" fill="#bab3c6"/></pattern>
-    <pattern id="grid" patternUnits="userSpaceOnUse" width="1000" height="1000">
+  const plank = (id, f) => {
+    const long = f.w, short = f.h, line = shade(f.color, .62), sw = Math.max(4, Math.min(10, short * .04)), grain = Math.max(2, sw * .45);
+    const tones = [.58, .78, 1.18, .68];
+    const wave = (x0, y0, x1, y1, vertical) => tones.map((k, i) => {
+      const t = (i + 1) / (tones.length + 1), amp = Math.max(2, Math.round(short * (.06 + i * .015)));
+      const col = shade(f.color, k);
+      if (vertical){
+        const x = Math.round(x0 + (x1 - x0) * t);
+        const mid = Math.round((y0 + y1) / 2), c1 = Math.round(y0 + (y1 - y0) * .33);
+        return `<path d="M${x} ${y0}Q${x - amp} ${c1} ${x + Math.round(amp * .45)} ${mid}T${x} ${y1}" stroke="${col}" stroke-width="${grain}" fill="none" opacity=".75"/>`;
+      }
+      const y = Math.round(y0 + (y1 - y0) * t);
+      const mid = Math.round((x0 + x1) / 2), c1 = Math.round(x0 + (x1 - x0) * .33);
+      return `<path d="M${x0} ${y}Q${c1} ${y - amp} ${mid} ${y + Math.round(amp * .45)}T${x1} ${y}" stroke="${col}" stroke-width="${grain}" fill="none" opacity=".75"/>`;
+    }).join('');
+    if (f.lay === 'v'){
+      const W = short * 2, H = long, joint = Math.round(long / 2);
+      return `<pattern id="m-${id}" patternUnits="userSpaceOnUse" width="${W}" height="${H}">
+        <rect width="${W}" height="${H}" fill="${f.color}"/>
+        ${wave(0, 0, short, H, true)}${wave(short, 0, W, H, true)}
+        <path d="M0 0V${H}M${short} 0V${H}M0 ${joint}H${short}" stroke="${line}" stroke-width="${sw}"/></pattern>`;
+    }
+    const H = short * 2, joint = Math.round(long / 2);
+    return `<pattern id="m-${id}" patternUnits="userSpaceOnUse" width="${long}" height="${H}">
+      <rect width="${long}" height="${H}" fill="${f.color}"/>
+      ${wave(0, 0, long, short, false)}${wave(0, short, long, H, false)}
+      <path d="M0 0H${long}M0 ${short}H${long}M${joint} 0V${short}" stroke="${line}" stroke-width="${sw}"/></pattern>`;
+  };
+  const tile = (id, f) => {
+    const w = f.lay === 'v' ? f.h : f.w, h = f.lay === 'v' ? f.w : f.h, line = shade(f.color, .78), sw = Math.max(4, Math.min(12, Math.min(w, h) * .02));
+    return `<pattern id="m-${id}" patternUnits="userSpaceOnUse" width="${w}" height="${h}">
+      <rect width="${w}" height="${h}" fill="${f.color}"/><path d="M0 0H${w}M0 0V${h}" stroke="${line}" stroke-width="${sw}"/></pattern>`;
+  };
+  $('#defs').innerHTML = ROOMS.map(r => { const f = floorOf(state.rooms[r.id]); return f.kind === 'plank' ? plank(r.id, f) : tile(r.id, f); }).join('') +
+    `<pattern id="grid" patternUnits="userSpaceOnUse" width="1000" height="1000">
       <path d="M500 0V1000M0 500H1000" stroke="#e5dfd3" stroke-width="8"/><path d="M0 0V1000M0 0H1000" stroke="#d8d0c1" stroke-width="14"/></pattern>`;
 }
 
@@ -734,7 +780,7 @@ function furnSVG(t,w,d,c){
 const NOLABEL = ['plant','floorlamp','sidetable','barstool','beanbag'];
 function renderRooms(){
   let s = '';
-  ROOMS.forEach(r => s += `<polygon class="room" data-room="${r.id}" points="${r.poly.map(p=>p.join(',')).join(' ')}" fill="url(#m-${state.rooms[r.id].mat})"/>`);
+  ROOMS.forEach(r => s += `<polygon class="room" data-room="${r.id}" points="${r.poly.map(p=>p.join(',')).join(' ')}" fill="url(#m-${r.id})"/>`);
   const sill = ([a,b,c,d]) => `<rect x="${a}" y="${b}" width="${c-a}" height="${d-b}" fill="#e2dacb" stroke="#b9b0a0" stroke-width="1" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
   DOORS.forEach(d => s += sill(d.rect)); SLIDES.forEach(d => s += sill(d.rect));
   $('#gRooms').innerHTML = s;
@@ -869,7 +915,7 @@ function renderSel(){
 }
 
 function renderAll(){
-  renderGrid(); renderRooms(); renderFurn(); renderWalls(); renderLabels(); renderMeasure(); renderSel(); renderPanel(); updateHeader();
+  buildDefs(); renderGrid(); renderRooms(); renderFurn(); renderWalls(); renderLabels(); renderMeasure(); renderSel(); renderPanel(); updateHeader();
   window.View3D?.sync();
 }
 
@@ -894,15 +940,20 @@ function renderPanel(){
 function overviewPanel(){
   const rows = ROOMS.map(r => {
     const st = state.rooms[r.id];
-    return `<tr class="click" data-room="${r.id}"><td><span class="sw" style="background:${MATS[st.mat].sw}"></span>${esc(nm(st.name))}${r.counted===false?' <span class="muted">*</span>':''}</td>
+    const f = floorOf(st);
+    return `<tr class="click" data-room="${r.id}"><td><span class="sw" style="background:${f.color}"></span>${esc(nm(st.name))}${r.counted===false?' <span class="muted">*</span>':''}</td>
       <td class="r">${fmt(area(r.poly))} m²</td></tr>`;
   }).join('');
   const tot = ROOMS.filter(r => r.counted !== false).reduce((a,r) => a + area(r.poly), 0);
   const byMat = {};
-  ROOMS.forEach(r => { const m = state.rooms[r.id].mat; byMat[m] = (byMat[m]||0) + area(r.poly); });
+  ROOMS.forEach(r => {
+    const f = floorOf(state.rooms[r.id]), k = `${f.kind}|${f.color}|${f.w}|${f.h}|${f.lay}`;
+    if (!byMat[k]) byMat[k] = {f, a:0};
+    byMat[k].a += area(r.poly);
+  });
   let cost = 0;
-  const matRows = Object.entries(byMat).map(([m,a]) => { const c = a*MATS[m].price*1.05; cost += c;
-    return `<tr><td><span class="sw" style="background:${MATS[m].sw}"></span>${nm(MATS[m].name)}</td><td class="r">${fmt(a,1)} m²</td><td class="r">¥${Math.round(c).toLocaleString()}</td></tr>`; }).join('');
+  const matRows = Object.values(byMat).map(({f,a}) => { const c = floorCost(a, f); cost += c;
+    return `<tr><td><span class="sw" style="background:${f.color}"></span>${floorName(f)} ${f.w}×${f.h} ${floorLayName(f)}</td><td class="r">${fmt(a,1)} m²</td><td class="r">¥${Math.round(c).toLocaleString()}</td></tr>`; }).join('');
   const dem = state.demolished.map(id => WALLS[+id.slice(1)]);
   const demLen = dem.reduce((a,w) => a + Math.max(w[2]-w[0], w[3]-w[1]), 0) / 1000;
   return `
@@ -1003,8 +1054,11 @@ function syncPaneBtns(){
 function closeDrawers(){ if (narrow()) drawer(null); }
 
 function roomPanel(r){
-  const st = state.rooms[r.id], a = area(r.poly), [x0,y0,x1,y1] = bbox(r.poly), inside = state.furniture.filter(f => f.cx>x0&&f.cx<x1&&f.cy>y0&&f.cy<y1);
-  const mats = Object.entries(MATS).map(([k,m]) => `<button class="mat ${k===st.mat?'on':''}" data-mat="${k}"><i style="background:${m.sw}"></i><span>${nm(m.name)}<small>¥${m.price}/m²</small></span></button>`).join('');
+  const st = state.rooms[r.id], fl = floorOf(st), a = area(r.poly), [x0,y0,x1,y1] = bbox(r.poly), inside = state.furniture.filter(f => f.cx>x0&&f.cx<x1&&f.cy>y0&&f.cy<y1);
+  const kinds = [['plank', tr('地板','Wood floor')], ['tile', tr('地砖','Floor tile')]].map(([k,label]) =>
+    `<button type="button" class="mat ${fl.kind===k?'on':''}" data-kind="${k}"><i style="background:${fl.color}"></i><span>${label}<small>¥${FLOOR_PRICE[k]}/m²</small></span></button>`).join('');
+  const lays = [['h', tr('横贴','Horizontal')], ['v', tr('竖贴','Vertical')]].map(([k,label]) =>
+    `<button type="button" class="mat ${fl.lay===k?'on':''}" data-lay="${k}"><span>${label}</span></button>`).join('');
   return `<section><h3>${tr('房间','Room')}</h3>
     <div class="form"><label class="full">${tr('名称','Name')}<input id="rName" value="${esc(nm(st.name))}"></label></div>
     <div class="stats" style="margin-top:10px">
@@ -1013,8 +1067,16 @@ function roomPanel(r){
       <div><small>${tr('开间','Width')}</small><span class="big">${x1-x0}</span> mm</div>
       <div><small>${tr('进深','Depth')}</small><span class="big">${y1-y0}</span> mm</div></div>
     <div class="muted">${tr(`墙面面积（层高 2.8m，未扣门窗）约 ${fmt(perim(r.poly)*2.8,1)} m²`, `Wall area (2.8m ceiling, openings not deducted) ≈ ${fmt(perim(r.poly)*2.8,1)} m²`)}</div></section>
-  <section><h3>${tr('地面材料','Flooring')}</h3><div class="mats">${mats}</div>
-    <div class="total"><span>${tr('材料估价','Estimated cost')}</span><b>¥${Math.round(a*MATS[st.mat].price*1.05).toLocaleString()}</b></div></section>
+  <section><h3>${tr('地面材料','Flooring')}</h3><div class="mats">${kinds}</div>
+    <div class="form" style="margin-top:8px">
+      <label class="full">${tr('颜色','Color')}<span class="hexrow"><input type="color" id="flP" value="${fl.color}"><input type="text" id="flC" maxlength="7" spellcheck="false" autocapitalize="off" value="${fl.color.slice(1)}" placeholder="RRGGBB"></span></label>
+    </div>
+    <div class="mats" style="margin-top:8px">${lays}</div>
+    <div class="form" style="margin-top:8px">
+      <label>${tr('长','Length')} (mm)<input type="number" id="flW" min="50" max="3000" step="10" value="${fl.w}"></label>
+      <label>${tr('宽','Width')} (mm)<input type="number" id="flH" min="50" max="3000" step="10" value="${fl.h}"></label>
+    </div>
+    <div class="total"><span>${tr('材料估价','Estimated cost')}</span><b>¥${Math.round(floorCost(a, fl)).toLocaleString()}</b></div></section>
   <section><h3>${tr('房间内家具','Furniture in room')} <small>${tr(`${inside.length} 件`, `${inside.length} items`)}</small></h3>
     <table>${inside.map(f => `<tr class="click" data-fid="${f.id}"><td>${esc(nm(f.name))}</td><td class="r muted">${f.w}×${f.d}</td></tr>`).join('') || `<tr><td class="muted">${tr('暂无','None')}</td></tr>`}</table>
     <div class="actions"><button class="btn" id="back">${tr('← 返回总览','← Back to overview')}</button></div></section>`;
@@ -1022,7 +1084,56 @@ function roomPanel(r){
 function bindRoomPanel(){
   const id = ui.sel.id;
   $('#rName').onchange = e => mutate(() => state.rooms[id].name = e.target.value.trim() || state.rooms[id].name);
-  document.querySelectorAll('#panel [data-mat]').forEach(b => b.onclick = () => mutate(() => state.rooms[id].mat = b.dataset.mat));
+  document.querySelectorAll('#panel [data-kind]').forEach(b => b.onclick = () => {
+    const kind = b.dataset.kind, st = state.rooms[id];
+    if (floorOf(st).kind === kind) return;
+    mutate(() => { st.kind = kind; [st.w, st.h] = FLOOR_SIZE[kind]; });
+  });
+  const parseHex = raw => { const s = String(raw).trim().replace(/^#/, ''); return /^[0-9a-fA-F]{6}$/.test(s) ? '#' + s.toLowerCase() : null; };
+  let colorBefore = null;
+  const previewColor = color => {
+    if (!colorBefore) colorBefore = snap();
+    state.rooms[id].color = color;
+    $('#flP').value = color;
+    $('#flC').value = color.slice(1);
+    buildDefs(); renderRooms();
+    window.View3D?.sync();
+  };
+  const commitColor = () => {
+    const before = colorBefore; colorBefore = null;
+    if (before && before !== snap()){ commit(before); renderAll(); }
+  };
+  $('#flP').oninput = e => previewColor(safeHex(e.target.value, state.rooms[id].color));
+  $('#flP').onchange = commitColor;
+  $('#flC').oninput = e => { const color = parseHex(e.target.value); if (color) previewColor(color); };
+  $('#flC').onchange = e => {
+    const color = parseHex(e.target.value);
+    if (!color){
+      const prev = colorBefore ? JSON.parse(colorBefore).rooms[id].color : state.rooms[id].color;
+      colorBefore = null;
+      state.rooms[id].color = prev;
+      $('#flP').value = prev;
+      e.target.value = prev.slice(1);
+      buildDefs(); renderRooms();
+      window.View3D?.sync();
+      toast(tr('请输入 6 位色号，例如 D8B88A', 'Enter a 6-digit hex color, e.g. D8B88A'));
+      return;
+    }
+    previewColor(color);
+    commitColor();
+  };
+  document.querySelectorAll('#panel [data-lay]').forEach(b => b.onclick = () => {
+    if (floorOf(state.rooms[id]).lay === b.dataset.lay) return;
+    mutate(() => state.rooms[id].lay = b.dataset.lay);
+  });
+  const setSize = (key, input) => {
+    const n = Math.round(+input.value), st = state.rooms[id];
+    if (!(n >= 50 && n <= 3000)){ input.value = st[key]; return; }
+    if (st[key] === n) return;
+    mutate(() => state.rooms[id][key] = n);
+  };
+  $('#flW').onchange = e => setSize('w', e.target);
+  $('#flH').onchange = e => setSize('h', e.target);
   document.querySelectorAll('#panel tr[data-fid]').forEach(tr => tr.onclick = () => select({kind:'furn', id:tr.dataset.fid}));
   $('#back').onclick = () => select(null);
 }
@@ -1649,48 +1760,48 @@ function mat(color, o = {}){
 }
 function rng(seed){ return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const rgbK = (hex, k) => { const n = parseInt(hex.slice(1), 16); const f = v => Math.max(0, Math.min(255, Math.round(v*k))); return `rgb(${f(n>>16&255)},${f(n>>8&255)},${f(n&255)})`; };
-// 地面贴图按真实尺寸平铺（UV 单位 = 米）
-const TEX = {
-  wood:{sx:1.8, sy:.36, base:'#d6b58a', rough:.55}, walnut:{sx:1.8, sy:.36, base:'#9a6f4b', rough:.5},
-  tile800:{sx:.8, sy:.8, base:'#ebe6dd', grout:'#cfc6b7', rough:.3}, tile600:{sx:.6, sy:.6, base:'#dfe3e0', grout:'#bfc6c1', rough:.35},
-  antislip:{sx:.3, sy:.3, base:'#d3d8d4', grout:'#aab2ac', rough:.8}, marble:{sx:1.2, sy:1.2, base:'#f2efe9', grout:'#d9d2c4', rough:.18},
-  terrazzo:{sx:.5, sy:.5, base:'#e6dfd3', rough:.4}, carpet:{sx:.3, sy:.3, base:'#c6bfd2', rough:1},
-};
-const floorMats = {};
-function floorMat(kind){
-  if (floorMats[kind]) return floorMats[kind];
-  const s = TEX[kind] || TEX.tile800, R = rng(kind.length*977 + 13), cv = document.createElement('canvas');
-  const wood = kind === 'wood' || kind === 'walnut';
-  cv.width = wood ? 1024 : 512; cv.height = wood ? 205 : 512;
+// 地面贴图按填写的尺寸平铺（repeat 单位 = 米）
+let floorMats = {};
+function dropFloorMats(){
+  Object.values(floorMats).forEach(m => { m.map && m.map.dispose(); m.dispose(); });
+  floorMats = {};
+}
+function floorMat(spec){
+  const key = spec.kind + '|' + spec.color + '|' + spec.w + '|' + spec.h + '|' + spec.lay;
+  if (floorMats[key]) return floorMats[key];
+  const wood = spec.kind === 'plank', base = spec.color, vertical = spec.lay === 'v', R = rng(spec.w * 13 + spec.h + base.charCodeAt(1));
+  const cv = document.createElement('canvas');
+  cv.width = wood ? 1024 : 512;
+  cv.height = Math.max(32, Math.round(cv.width * spec.h / spec.w));
   const g = cv.getContext('2d'), W = cv.width, Hh = cv.height;
-  g.fillStyle = s.base; g.fillRect(0, 0, W, Hh);
+  g.fillStyle = base; g.fillRect(0, 0, W, Hh);
   if (wood){
-    const rowH = Hh/2, joints = [[W*2/3], [W/3]];
-    for (let r = 0; r < 2; r++){
-      let x0 = 0;
-      [...joints[r], W].forEach(x1 => {
-        g.fillStyle = rgbK(s.base, .9 + R()*.2); g.fillRect(x0, r*rowH, x1-x0, rowH);
-        g.strokeStyle = rgbK(s.base, .8); g.globalAlpha = .35; g.lineWidth = 1.2;
-        for (let k = 0; k < 7; k++){ const y = r*rowH + 6 + R()*(rowH-12); g.beginPath(); g.moveTo(x0, y);
-          for (let x = x0; x <= x1; x += 40) g.lineTo(x, y + Math.sin(x*.02 + k)*2.5); g.stroke(); }
-        g.globalAlpha = 1; g.fillStyle = rgbK(s.base, .62); g.fillRect(x1-1.5, r*rowH, 3, rowH); x0 = x1;
-      });
-      g.fillStyle = rgbK(s.base, .62); g.fillRect(0, r*rowH, W, 2.5);
+    for (let k = 0; k < 4; k++){
+      g.globalAlpha = .16; g.fillStyle = rgbK(base, .7 + R() * .45);
+      g.fillRect(0, R() * Hh, W, 1.5 + R() * Math.max(2, Hh * .14));
     }
-  } else if (kind === 'marble'){
-    g.strokeStyle = 'rgba(160,150,135,.35)';
-    for (let k = 0; k < 6; k++){ g.lineWidth = 1 + R()*3; g.beginPath(); g.moveTo(R()*W, 0); g.bezierCurveTo(R()*W, R()*Hh, R()*W, R()*Hh, R()*W, Hh); g.stroke(); }
-  } else if (kind === 'terrazzo'){
-    const cs = ['#b9a58c','#8fa3a0','#c9b7a2','#a88f76','#7e8a86'];
-    for (let k = 0; k < 160; k++){ g.fillStyle = cs[k%5]; g.beginPath(); g.arc(R()*W, R()*Hh, 2 + R()*7, 0, 7); g.fill(); }
+    g.lineWidth = 1.3;
+    for (let k = 0; k < 18; k++){
+      g.globalAlpha = .28 + R() * .35; g.strokeStyle = rgbK(base, .5 + R() * .7);
+      const y = 3 + R() * (Hh - 6), amp = 1.4 + R() * 2.4;
+      g.beginPath(); g.moveTo(0, y);
+      for (let x = 0; x <= W; x += 24) g.lineTo(x, y + Math.sin(x * .012 + k) * amp + Math.sin(x * .003 + k) * amp * .6);
+      g.stroke();
+    }
+    g.globalAlpha = 1; g.fillStyle = rgbK(base, .62);
+    g.fillRect(0, 0, W, Math.max(2, Hh * .06)); g.fillRect(0, 0, Math.max(2, W * .008), Hh);
   } else {
-    for (let k = 0; k < 1500; k++){ g.fillStyle = `rgba(0,0,0,${R()*.04})`; g.fillRect(R()*W, R()*Hh, 2, 2); }
+    for (let k = 0; k < 700; k++){ g.fillStyle = `rgba(0,0,0,${R() * .04})`; g.fillRect(R() * W, R() * Hh, 2, 2); }
+    g.fillStyle = rgbK(base, .78);
+    const t = Math.max(3, Math.round(Math.min(W, Hh) * .03));
+    g.fillRect(0, 0, W, t); g.fillRect(0, 0, t, Hh);
   }
-  if (s.grout){ g.fillStyle = s.grout; g.fillRect(0, 0, W, 3); g.fillRect(0, 0, 3, Hh); }
-  const t = new THREE.CanvasTexture(cv);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1/s.sx, 1/s.sy);
-  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  return floorMats[kind] = new THREE.MeshStandardMaterial({map:t, roughness:s.rough});
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1000 / (vertical ? spec.h : spec.w), 1000 / (vertical ? spec.w : spec.h));
+  if (vertical){ tex.center.set(.5, .5); tex.rotation = Math.PI / 2; }
+  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return floorMats[key] = new THREE.MeshStandardMaterial({map:tex, roughness: wood ? .55 : .32});
 }
 
 /* ======================= 几何小工具（y = 底面高度） ======================= */
@@ -2295,10 +2406,10 @@ const edgeMat = new THREE.LineBasicMaterial({color:0x6f675b}), skirtMat = new TH
 function shapeOf(poly, flip){ const s = new THREE.Shape(); poly.forEach(([x, y], i) => s[i ? 'lineTo' : 'moveTo'](wx(x), flip ? wz(y) : -wz(y))); return s; }
 
 function buildArch(){
-  clearGroup(archFloor); clearGroup(archUp); lampG.clear(); doors.length = 0; colliders = [];
+  clearGroup(archFloor); clearGroup(archUp); lampG.clear(); doors.length = 0; colliders = []; dropFloorMats();
   const top = opt.cut;
   ROOMS.forEach(r => {
-    const m = floorMat(state.rooms[r.id].mat), bay = r.counted === false;
+    const m = floorMat(floorOf(state.rooms[r.id])), bay = r.counted === false;
     const geo = bay ? new THREE.ExtrudeGeometry(shapeOf(r.poly), {depth:.45, bevelEnabled:false}) : new THREE.ShapeGeometry(shapeOf(r.poly));
     geo.rotateX(-Math.PI/2);
     const fl = new THREE.Mesh(geo, bay ? [m, mat('#e9e4da')] : m);
